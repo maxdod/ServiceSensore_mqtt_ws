@@ -1,7 +1,5 @@
 /***
- * Legge il valore di sensori temperatuta, umidità e radiazione solare oltre la posizione GPS corrente
- * Configurato come servizio ROS, ritorna i valori in un messaggio custom ROS
- * Pubblica i dati in un broker MQTT locale o remoto
+ * 
  */
 #include "ros/ros.h"
 #include "service_sensori/getTandH.h"
@@ -25,7 +23,7 @@ uint8_t buffer;
 
 using  namespace std;
 using namespace sensor_msgs;
-
+bool msgvalido = false;
 static int run = -1;
 static int first_connection = 1;
 static int sent_mid = -1;
@@ -84,9 +82,11 @@ class thp
             if (stato !=1 )
             {
                 cout << "Errore apertura Porta" << endl;
+                msgvalido = false;
                 return -1;
             }  else
             cout << "Connesso" << endl;
+            msgvalido = true;
        return 1;
     }
     void getTh()
@@ -212,7 +212,7 @@ void getSol()
         if (sharedPtr != NULL)
         {
             posizione = *sharedPtr;
-        }
+        } else msgvalido = false; // posizione non valida
         mosq->username_pw_set("agri01", "agri01");
 	    mosq->connect(MqttUrl.c_str(), 1883, 60);
         
@@ -221,10 +221,14 @@ void getSol()
                 res.temperatura = this->temperatura;
 		        res.umidita = this->umidita;
                 res.radiazione = (int)this->radiazione;
+                res.longitudine = posizione.longitude;
+                res.latitudine =  posizione.latitude;
+                res.valido = msgvalido;
                 string json = "{\"temperatura\":"+ to_string(this->temperatura) + ",\"umidita\":"+ to_string(this->umidita)
                               +",\"radiazione\":"+to_string(this->radiazione)
                               +",\"lat\":" + to_string(posizione.latitude) 
                               +",\"lon\":" + to_string(posizione.longitude) 
+                              +",\"valido\":" + (msgvalido ? "true": "false")
                               +"}";
                 mosq->pubblica(json);
                 mosq->loop(0);
