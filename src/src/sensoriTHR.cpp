@@ -1,19 +1,7 @@
 /***
- * This example expects the serial port has a loopback on it.
- *
- * Alternatively, you could use an Arduino:
- *
- * <pre>
- *  void setup() {
- *    Serial.begin(<insert your baudrate here>);
- *  }
- *
- *  void loop() {
- *    if (Serial.available()) {
- *      Serial.write(Serial.read());
- *    }
- *  }
- * </pre>
+ * Legge il valore di sensori temperatuta, umidità e radiazione solare oltre la posizione GPS corrente
+ * Configurato come servizio ROS, ritorna i valori in un messaggio custom ROS
+ * Pubblica i dati in un broker MQTT locale o remoto
  */
 #include "ros/ros.h"
 #include "service_sensori/getTandH.h"
@@ -41,7 +29,7 @@ using namespace sensor_msgs;
 static int run = -1;
 static int first_connection = 1;
 static int sent_mid = -1;
-
+string MqttUrl = "localhost";
 class mqtt_agri01 : public mosqpp::mosquittopp
 {
 	public:
@@ -216,8 +204,17 @@ void getSol()
 
 	bool handle_getTempAndHumidity(service_sensori::getTandH::Request &req,service_sensori::getTandH::Response &res)
 	{
+        // Leggi posizione gps
+        boost::shared_ptr<sensor_msgs::NavSatFix const> sharedPtr;
+        sensor_msgs::NavSatFix posizione;
+        // leggo la posizione gps , aspetta massimo 2 secondi
+        sharedPtr = ros::topic::waitForMessage<sensor_msgs::NavSatFix>("/sensors/gps_0/fix",ros::Duration(2));
+        if (sharedPtr != NULL)
+        {
+            posizione = *sharedPtr;
+        }
         mosq->username_pw_set("agri01", "agri01");
-	    mosq->connect("localhost", 1883, 60);
+	    mosq->connect(MqttUrl.c_str(), 1883, 60);
         
   		this->getTh();
     		this->getSol();
@@ -226,8 +223,8 @@ void getSol()
                 res.radiazione = (int)this->radiazione;
                 string json = "{\"temperatura\":"+ to_string(this->temperatura) + ",\"umidita\":"+ to_string(this->umidita)
                               +",\"radiazione\":"+to_string(this->radiazione)
-                              +",\"lat\":" + to_string(lat) 
-                              +",\"lon\":" + to_string(lon) 
+                              +",\"lat\":" + to_string(posizione.latitude) 
+                              +",\"lon\":" + to_string(posizione.longitude) 
                               +"}";
                 mosq->pubblica(json);
                 mosq->loop(0);
@@ -241,18 +238,7 @@ void getSol()
 
 
 
-void callback(const NavSatFixConstPtr &fix) {
 
-  if (fix->status.status == NavSatStatus::STATUS_NO_FIX) {
-    std::cout << "Unable to get a fix on the location." << std::endl;
-    return;
-  }
-  lon = fix->longitude;
-  lat = fix->latitude;
-  std::cout << "Current Latitude: " << lat << std::endl;
-  std::cout << "Current Longitude " << lon << std::endl;
-
-}
 
 int main (int argc, char** argv){
 
@@ -260,8 +246,16 @@ int main (int argc, char** argv){
     ros::init(argc, argv, "Service_Sensori");
     
     ros::NodeHandle n;
+    string lhost = "localhost"; //default
+    if (n.getParam("mqtt_broker", MqttUrl))
+    {
+        cout << "IP MQTT broker impostato da parametro esterno: "+MqttUrl << endl;
+    }
+    else 
+        MqttUrl = lhost;
+    cout << "Url: " + MqttUrl  <<  ", lhost: "+ lhost << endl;
     thp node01;
-    ros::Subscriber gps_sub = n.subscribe("/sensors/gps_0/fix", 1, callback);
+    //ros::Subscriber gps_sub = n.subscribe("/sensors/gps_0/fix", 1, callback);
     ros::ServiceServer service = n.advertiseService("getSensorData", &thp::handle_getTempAndHumidity,&node01);
     ROS_INFO("Ready to get sensor data.");
     
