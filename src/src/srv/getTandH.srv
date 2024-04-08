@@ -2,3 +2,6 @@
 float64 temperatura
 float64 umidita
 float64 radiazione
+float64 longitudine
+float64 latitudine
+bool    valido
